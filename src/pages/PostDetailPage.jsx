@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Heart,
   Bookmark,
@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Maximize2,
   ExternalLink,
+  UploadCloud,
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -36,6 +37,7 @@ import useAuthStore from '../store/useAuthStore';
 import { normalizePost } from '../lib/postUtils';
 import ReportModal from '../components/modals/ReportModal';
 import LoginPromptModal from '../components/modals/LoginPromptModal';
+import ConfirmDeleteModal from '../components/modals/ConfirmDeleteModal';
 import api from '../services/api';
 
 // ─── PDF Viewer Modal ───
@@ -184,6 +186,15 @@ export default function PostDetailPage() {
   // Media state
   const [attachments, setAttachments] = useState([]);
   const [galleryImages, setGalleryImages] = useState([]);
+  
+  // New media to add during edit
+  const pdfInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const [newPdfFiles, setNewPdfFiles] = useState([]);
+  const [newGalleryImages, setNewGalleryImages] = useState([]);
+
+  // Delete Modal
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   // Load Post Data
   const { data: postRaw, isLoading: isPostLoading } = useQuery({
@@ -230,6 +241,9 @@ export default function PostDetailPage() {
         setGalleryImages([]);
         setAttachments([]);
       }
+      
+      setNewPdfFiles([]);
+      setNewGalleryImages([]);
     }
   }, [postRaw, user, tagsString]);
 
@@ -297,6 +311,23 @@ export default function PostDetailPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'ไม่สามารถรายงานได้ในขณะนี้'),
   });
 
+  const publishDraftMutation = useMutation({
+    mutationFn: () => updatePost(id, { post_status: 'ACTIVE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post', id] });
+      toast.success('เผยแพร่โพสต์สำเร็จ!');
+    },
+    onError: (err) => toast.error('ไม่สามารถเผยแพร่โพสต์ได้'),
+  });
+
+  const restoreRequestMutation = useMutation({
+    mutationFn: () => api.post(`/reports`, { post_id: id, reason: 'Request Restore (Soft Deleted)' }),
+    onSuccess: () => {
+      toast.success('ส่งคำร้องขอคืนโพสต์สำเร็จแล้ว โปรดรอผู้ดูแลระบบตรวจสอบ');
+    },
+    onError: (err) => toast.error('ไม่สามารถส่งคำร้องขอได้'),
+  });
+
   const deletePostMutation = useMutation({
     mutationFn: () => deletePost(id),
     onSuccess: () => {
@@ -307,9 +338,7 @@ export default function PostDetailPage() {
   });
 
   const handleDeletePost = () => {
-    if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบโพสต์นี้?')) {
-      deletePostMutation.mutate();
-    }
+    setDeleteModalOpen(true);
   };
 
   const isAuthor = user?.id === author?.id;
@@ -341,13 +370,57 @@ export default function PostDetailPage() {
       return;
     }
     
-    updatePostMutation.mutate({
-      title: editTitle,
-      summary: editSummary,
-      content: editContent,
-      education_level: editLevel,
-      tags: editTags.split(',').map(tag => tag.trim()).filter(Boolean),
-    });
+    if (newPdfFiles.length === 0 && newGalleryImages.length === 0) {
+      // No new files, send JSON
+      updatePostMutation.mutate({
+        title: editTitle,
+        summary: editSummary,
+        content: editContent,
+        education_level: editLevel,
+        tags: editTags.split(',').map(tag => tag.trim()).filter(Boolean),
+      });
+    } else {
+      // Send FormData to include new media
+      const formData = new FormData();
+      formData.append('title', editTitle);
+      formData.append('summary', editSummary);
+      formData.append('content', editContent);
+      formData.append('education_level', editLevel);
+      formData.append('tags', JSON.stringify(editTags.split(',').map(tag => tag.trim()).filter(Boolean)));
+      
+      newPdfFiles.forEach(pdf => formData.append('media_files', pdf.file));
+      newGalleryImages.forEach(img => formData.append('media_files', img.file));
+
+      updatePostMutation.mutate(formData);
+    }
+  };
+
+  const handlePdfChange = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = [];
+    for (const f of files) {
+      if (f.type !== 'application/pdf') {
+        toast.error('ไม่รองรับไฟล์ที่แนบมา');
+      } else {
+        validFiles.push({ file: f, name: f.name, size: f.size });
+      }
+    }
+    setNewPdfFiles(prev => [...prev, ...validFiles]);
+    e.target.value = '';
+  };
+
+  const handleGalleryChange = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = [];
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) {
+        toast.error('ไม่รองรับไฟล์ที่แนบมา');
+      } else {
+        validFiles.push({ file: f, preview: URL.createObjectURL(f) });
+      }
+    }
+    setNewGalleryImages(prev => [...prev, ...validFiles]);
+    e.target.value = '';
   };
 
   const handleRemoveAttachment = (attachId) => {
@@ -412,11 +485,49 @@ export default function PostDetailPage() {
                     <Pencil size={16} />
                     <span>แก้ไขโพสต์</span>
                   </button>
+                  {post.post_status === 'DRAFT' && (
+                    <button
+                      type="button"
+                      onClick={() => publishDraftMutation.mutate()}
+                      disabled={publishDraftMutation.isPending}
+                      className="btn-premium btn-primary-custom px-5 py-2.5 rounded-2xl text-sm font-extrabold flex items-center gap-2 transition-all shadow-sm"
+                    >
+                      {publishDraftMutation.isPending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <UploadCloud size={16} />
+                      )}
+                      <span>เผยแพร่</span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
           )}
         </div>
+
+        {/* Soft Deleted Warning & Request Restore */}
+        {post.post_status === 'SOFT_DELETED' && isAuthor && (
+          <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                <Trash2 size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-rose-800">โพสต์นี้ถูกลบชั่วคราว (Soft-Deleted)</span>
+                <span className="text-sm text-rose-600">โพสต์ของคุณถูกลบและจะไม่แสดงให้ผู้อื่นเห็น หากคุณคิดว่านี่คือความผิดพลาด คุณสามารถร้องขอให้ผู้ดูแลระบบตรวจสอบได้</span>
+              </div>
+            </div>
+            <button
+              onClick={() => restoreRequestMutation.mutate()}
+              disabled={restoreRequestMutation.isPending}
+              className="btn-premium bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 hover:text-rose-700 px-5 py-2.5 whitespace-nowrap text-sm font-bold shadow-sm flex items-center gap-2"
+            >
+              {restoreRequestMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : null}
+              <span>ร้องขอคืนโพสต์</span>
+            </button>
+          </div>
+        )}
 
         {isEditing ? (
           /* ================== EDIT VIEW ================== */
@@ -498,6 +609,91 @@ export default function PostDetailPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Add New Attachments during Edit */}
+            <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
+              <label className="text-sm font-black text-muted-foreground uppercase">เพิ่มไฟล์ใหม่</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div 
+                  onClick={() => pdfInputRef.current?.click()}
+                  className="border border-dashed border-border rounded-2xl bg-secondary hover:bg-secondary/80 transition-all flex items-center justify-center p-6 cursor-pointer text-center group"
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <FileText size={24} className="text-primary group-hover:scale-110 transition-transform" />
+                    <span className="font-bold text-foreground text-sm">เพิ่มไฟล์ PDF ใหม่</span>
+                  </div>
+                </div>
+                <input 
+                  type="file" 
+                  ref={pdfInputRef}
+                  accept=".pdf"
+                  multiple
+                  onChange={handlePdfChange}
+                  className="hidden" 
+                />
+
+                <div 
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="border border-dashed border-border rounded-2xl bg-secondary hover:bg-secondary/80 transition-all flex items-center justify-center p-6 cursor-pointer text-center group"
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <ImageIcon size={24} className="text-primary group-hover:scale-110 transition-transform" />
+                    <span className="font-bold text-foreground text-sm">เพิ่มรูปภาพใหม่</span>
+                  </div>
+                </div>
+                <input 
+                  type="file" 
+                  ref={galleryInputRef}
+                  accept="image/*"
+                  multiple
+                  onChange={handleGalleryChange}
+                  className="hidden" 
+                />
+              </div>
+
+              {/* Newly added files preview */}
+              {newPdfFiles.length > 0 && (
+                <div className="flex flex-col gap-2 mt-3">
+                  <span className="text-xs font-bold text-slate-500">PDF ที่จะเพิ่มใหม่ ({newPdfFiles.length}):</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {newPdfFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-emerald-50 rounded-xl px-4 py-3 border border-emerald-100">
+                        <div className="flex items-center gap-3 text-emerald-800 text-xs font-bold min-w-0">
+                          <FileText size={16} />
+                          <span className="truncate block text-sm">{file.name}</span>
+                        </div>
+                        <button type="button" onClick={() => setNewPdfFiles(newPdfFiles.filter((_, i) => i !== idx))} className="p-1 text-emerald-600 hover:text-emerald-800 rounded-full transition-colors">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {newGalleryImages.length > 0 && (
+                <div className="flex flex-col gap-2 mt-3">
+                  <span className="text-xs font-bold text-slate-500">รูปภาพที่จะเพิ่มใหม่ ({newGalleryImages.length}):</span>
+                  <div className="flex flex-wrap gap-3">
+                    {newGalleryImages.map((img, idx) => (
+                      <div key={idx} className="w-20 h-20 rounded-xl border border-emerald-200 relative group/img overflow-hidden">
+                        <img src={img.preview} alt="New Gallery Preview" className="w-full h-full object-cover" />
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            URL.revokeObjectURL(newGalleryImages[idx].preview);
+                            setNewGalleryImages(newGalleryImages.filter((_, i) => i !== idx));
+                          }}
+                          className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full hover:bg-red-600 transition-colors opacity-0 group-hover/img:opacity-100"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -787,6 +983,12 @@ export default function PostDetailPage() {
       <LoginPromptModal 
         isOpen={loginModalOpen} 
         onClose={() => setLoginModalOpen(false)} 
+      />
+
+      <ConfirmDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={() => deletePostMutation.mutate()}
       />
 
       {/* PDF Full-Screen Viewer Modal */}

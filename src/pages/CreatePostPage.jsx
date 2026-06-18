@@ -53,15 +53,29 @@ export default function CreatePostPage() {
 
   const handlePdfChange = (e) => {
     const files = Array.from(e.target.files);
-    const newPdfs = files.map(f => ({ file: f, name: f.name, size: f.size }));
-    setPdfFiles(prev => [...prev, ...newPdfs]);
+    const validFiles = [];
+    for (const f of files) {
+      if (f.type !== 'application/pdf') {
+        toast.error('ไม่รองรับไฟล์ที่แนบมา');
+      } else {
+        validFiles.push({ file: f, name: f.name, size: f.size });
+      }
+    }
+    setPdfFiles(prev => [...prev, ...validFiles]);
     e.target.value = '';
   };
 
   const handleGalleryChange = (e) => {
     const files = Array.from(e.target.files);
-    const newImages = files.map(f => ({ file: f, preview: URL.createObjectURL(f) }));
-    setGalleryImages(prev => [...prev, ...newImages]);
+    const validFiles = [];
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) {
+        toast.error('ไม่รองรับไฟล์ที่แนบมา');
+      } else {
+        validFiles.push({ file: f, preview: URL.createObjectURL(f) });
+      }
+    }
+    setGalleryImages(prev => [...prev, ...validFiles]);
     e.target.value = '';
   };
 
@@ -196,12 +210,6 @@ export default function CreatePostPage() {
           </button>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="border border-border bg-card hover:bg-secondary text-foreground px-6 py-2 rounded-full text-sm font-extrabold transition-all shadow-sm"
-            >
-              พรีวิว
-            </button>
             <button
               type="button"
               onClick={() => handleSubmit(null, 'DRAFT')}
