@@ -1,14 +1,15 @@
 import React from 'react';
-import { Shield, Loader2, RotateCcw, Trash2 } from 'lucide-react';
+import { Shield, Loader2, RotateCcw, Trash2, ArrowLeft } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchModeratorPosts, moderatorPostAction } from '../../services/endpoints';
 import useAuthStore from '../../store/useAuthStore';
-import { Link, Navigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 
 export default function ModeratorPage() {
   const isModerator = useAuthStore((s) => s.isModerator());
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: posts = [], isLoading } = useQuery({
     queryKey: ['moderator-posts'],
@@ -22,7 +23,7 @@ export default function ModeratorPage() {
       queryClient.invalidateQueries({ queryKey: ['moderator-posts'] });
       toast.success('Action applied');
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Action failed'),
+    onError: (err) => toast.error(err.response?.data?.message || 'ทำรายการไม่สำเร็จ'),
   });
 
   if (!isModerator) {
@@ -30,7 +31,19 @@ export default function ModeratorPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl mx-auto pb-10">
+    <div className="flex flex-col gap-6 max-w-4xl mx-auto pb-10 mt-6">
+      {/* Back Button */}
+      <div className="flex justify-start">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors font-extrabold text-base"
+        >
+          <ArrowLeft size={18} />
+          <span>ย้อนกลับ</span>
+        </button>
+      </div>
+
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
           <Shield size={28} />

@@ -25,7 +25,7 @@ const useMilestoneStore = create((set, get) => ({
       await get().fetchMilestones();
     } catch (error) {
       console.error('Failed to claim milestone:', error);
-      toast.error(error.response?.data?.message || 'Failed to claim reward');
+      toast.error(error.response?.data?.message || 'ไม่สามารถรับรางวัลได้');
     }
   },
 

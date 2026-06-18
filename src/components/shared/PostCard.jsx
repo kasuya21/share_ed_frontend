@@ -33,7 +33,7 @@ export default function PostCard({ post }) {
     onError: () => {
       setLiked(post.isLiked);
       setLikeCount(post.likes ?? 0);
-      toast.error('Sign in to like posts');
+      toast.error('กรุณาเข้าสู่ระบบเพื่อกดถูกใจ');
     },
     onSuccess: (res) => {
       const isLiked = res.data?.isLiked;
@@ -47,14 +47,14 @@ export default function PostCard({ post }) {
     onMutate: () => setBookmarked((v) => !v),
     onError: () => {
       setBookmarked(post.isBookmarked);
-      toast.error('Sign in to bookmark posts');
+      toast.error('กรุณาเข้าสู่ระบบเพื่อบันทึกโพสต์');
     },
   });
 
   const handleLike = (e) => {
     e.preventDefault();
     if (!user) {
-      toast.error('Sign in to like posts');
+      toast.error('กรุณาเข้าสู่ระบบเพื่อกดถูกใจ');
       return;
     }
     likeMutation.mutate();
@@ -63,7 +63,7 @@ export default function PostCard({ post }) {
   const handleBookmark = (e) => {
     e.preventDefault();
     if (!user) {
-      toast.error('Sign in to bookmark posts');
+      toast.error('กรุณาเข้าสู่ระบบเพื่อบันทึกโพสต์');
       return;
     }
     bookmarkMutation.mutate();

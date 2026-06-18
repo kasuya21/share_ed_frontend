@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Users, FileText, AlertTriangle, EyeOff, ArrowLeft, Edit3, Loader2, Ban, CheckCircle } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, AlertTriangle, EyeOff, ArrowLeft, Edit3, Loader2, Ban, CheckCircle, Shield } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Navigate, useNavigate } from 'react-router';
@@ -15,7 +15,7 @@ export default function AdminDashboardPage() {
   const isAdmin = useAuthStore((s) => s.isAdmin());
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [subTab, setSubTab] = useState('reported');
+  const [subTab, setSubTab] = useState('all');
 
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -49,12 +49,18 @@ export default function AdminDashboardPage() {
   const suspendedCount = users.filter(u => u.status === 'SUSPENDED' || u.status === 'BANNED').length;
   const stats = [
     { label: 'ผู้ใช้ทั้งหมด', value: usersLoading ? '...' : users.length.toLocaleString(), icon: Users, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { label: 'ผู้ดูแลระบบ', value: usersLoading ? '...' : users.filter(u => u.role === 'ADMIN').length.toLocaleString(), icon: FileText, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    { label: 'ผู้ดูแลระบบ', value: usersLoading ? '...' : users.filter(u => u.role === 'ADMIN' || u.role === 'MODERATOR').length.toLocaleString(), icon: FileText, color: 'text-emerald-500', bg: 'bg-emerald-50' },
     { label: 'สมาชิกปกติ', value: usersLoading ? '...' : users.filter(u => u.role === 'MEMBER').length.toLocaleString(), icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'ถูกระงับ/แบน', value: usersLoading ? '...' : suspendedCount.toLocaleString(), icon: EyeOff, color: 'text-red-500', bg: 'bg-red-50' },
   ];
 
-  const tableData = users.map(u => ({
+  const filteredUsers = users.filter(u => {
+    if (subTab === 'admins') return u.role === 'ADMIN' || u.role === 'MODERATOR';
+    if (subTab === 'banned') return u.status === 'BANNED' || u.status === 'SUSPENDED';
+    return true; // 'all'
+  });
+
+  const tableData = filteredUsers.map(u => ({
     id: u.id,
     username: u.username,
     profile_image: u.profile_image,
@@ -81,9 +87,18 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Title */}
-        <h1 className="text-3xl font-black text-foreground px-1">
-          แดชบอร์ดผู้ดูแลระบบและการรายงาน
-        </h1>
+        <div className="flex items-center justify-between px-1 flex-wrap gap-4">
+          <h1 className="text-3xl font-black text-foreground">
+            แดชบอร์ดผู้ดูแลระบบ
+          </h1>
+          <button
+            onClick={() => navigate('/moderator')}
+            className="flex items-center gap-2 bg-primary/10 text-primary hover:bg-primary/20 px-5 py-2.5 rounded-xl font-bold transition-colors"
+          >
+            <AlertTriangle size={18} />
+            จัดการโพสต์ที่ถูกรายงาน
+          </button>
+        </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -100,32 +115,45 @@ export default function AdminDashboardPage() {
           ))}
         </div>
 
-        {/* Tabs switcher: Reported posts / Suspended posts */}
-        <div className="flex items-center gap-2 bg-card p-1.5 rounded-2xl border border-border w-fit shadow-sm">
+        {/* Tabs switcher */}
+        <div className="flex flex-wrap items-center gap-2 bg-card p-1.5 rounded-2xl border border-border w-fit shadow-sm">
           <button
             type="button"
-            onClick={() => setSubTab('reported')}
+            onClick={() => setSubTab('all')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-extrabold transition-all cursor-pointer ${
-              subTab === 'reported'
+              subTab === 'all'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <AlertTriangle size={16} />
-            <span>โพสต์ที่ถูกรายงาน</span>
+            <Users size={16} />
+            <span>ผู้ใช้งานทั้งหมด</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setSubTab('suspended')}
+            onClick={() => setSubTab('admins')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-extrabold transition-all cursor-pointer ${
-              subTab === 'suspended'
+              subTab === 'admins'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <EyeOff size={16} />
-            <span>โพสต์ที่ถูกระงับ</span>
+            <Shield size={16} />
+            <span>ผู้ดูแลระบบ</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSubTab('banned')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-extrabold transition-all cursor-pointer ${
+              subTab === 'banned'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Ban size={16} />
+            <span>ผู้ใช้ที่ถูกระงับ</span>
           </button>
         </div>
 
