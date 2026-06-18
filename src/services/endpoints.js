@@ -89,7 +89,10 @@ export const fetchModeratorPosts = () =>
 export const moderatorPostAction = (postId, action) =>
   api.post(`/moderator/posts/${postId}/action`, { action });
 
-export const fetchAdminUsers = () => api.get('/admin/users').then(unwrapData);
+export const fetchAdminUsers = () => api.get('/admin/users').then(r => {
+  const body = r.data;
+  return body?.users || body?.data || body || [];
+});
 
 export const changeUserRole = (id, role) =>
   api.patch(`/admin/users/${id}/role`, { role });
